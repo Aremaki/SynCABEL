@@ -1,0 +1,43 @@
+# Format d'input
+- **CUI**:
+Un identifiant unique du concept
+- **Définitions**:
+Une ou plusieurs définitions du concept
+- **Mentions**:
+Une liste de mentions (peut inclure des termes techniques ou artificiels)
+
+# Tâches
+1. **Sélection et génération de mentions** :
+   - Évaluer d'abord quelles mentions existantes semblent les plus naturelles dans un contexte professionnel biomédical (clinique ou recherche).
+   - Conserver uniquement les mentions les plus fluides et scientifiquement précises.
+   - Générer ensuite des mentions supplémentaires de haute qualité qui :
+       * Ajoutent des variations naturelles utilisées par les chercheurs.
+       * Couvrent différentes conventions (acronymes, noms complets, noms fonctionnels).
+       * Complètent les mentions existantes.
+   - Le total doit être de **5 mentions** (mélange de mentions conservées et nouvelles).
+   - **À éviter** :
+       - Les virgules (`,`), parenthèses.
+       - Les termes en MAJUSCULES ou avec underscores (ex. `ALPHA_TOCOPHEROL`).
+       - Les noms chimiques complexes.
+       - Les termes non français ou dans une autre langue.
+
+2. **Phrases contextuelles** :
+   Pour chacune des 5 mentions finales :
+   - Rédiger une phrase claire et scientifiquement précise (15-30 mots) avec la mention entre `[crochets]`.
+   - Chaque phrase doit :
+       - Inclure le concept dans `[crochets]`.
+       - Commencer par `exemple : `.
+       - Avoir un **contexte distinct** (ex. mécanismes différents, populations variées, systèmes biologiques spécifiques).
+
+# Format de la réponse
+## Mentions finales
+1. Mention 1
+2. Mention 2
+...
+5. Mention 5
+
+## Phrases contextuelles
+exemple : "Phrase avec [mention 1] dans son contexte..."
+exemple : "Phrase avec [mention 2] dans son contexte..."
+...
+exemple : "Phrase avec [mention 5] dans son contexte..."

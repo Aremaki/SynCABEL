@@ -1,18 +1,30 @@
+"""Prepare concept user prompts for synthetic data generation.
+
+Turns raw UMLS concept + definition parquet files into per-CUI user prompts stored
+in chunked parquet files ready for LLM generation (used by generate_synth scripts).
+
+Usage:
+    python prepare_concepts.py --mm-path data/MM_2017_all.parquet --mm-def data/UMLS_MM/umls_def.parquet \
+         --out-dir data/user_prompts_MM --chunk-size 2500
+
+Outputs: sample_{i}.parquet each containing columns: CUI, user_prompt.
+"""
+
+from pathlib import Path
+
 import polars as pl
+import typer
 from tqdm import tqdm
 
-# Load UMLS MM
-umls_MM = pl.read_parquet("data/MM_2017_all.parquet")
-umls_quaero = pl.read_parquet("data/QUAERO_2017_all.parquet")
-umls_def_MM = pl.read_parquet("data/UMLS_MM/umls_def.parquet")
-umls_def_quaero = pl.read_parquet("data/UMLS_QUAERO/umls_def.parquet")
-
-umls_MM = umls_MM.join(umls_def_MM, on="CUI", how="left")
-umls_quaero = umls_quaero.join(umls_def_quaero, on="CUI", how="left")
-all_concepts_MM = umls_def_MM.sample(fraction=1).filter(pl.col("DEF").is_not_null())
-all_concepts_quaero = umls_def_quaero.sample(fraction=1).filter(
-    pl.col("DEF").is_not_null()
+app = typer.Typer(
+    help="Build per-CUI user prompts from concept mentions and definitions."
 )
+
+
+def _load_join(concepts_path: Path, defs_path: Path) -> pl.DataFrame:
+    concepts = pl.read_parquet(concepts_path)
+    defs = pl.read_parquet(defs_path)
+    return concepts.join(defs, on="CUI", how="left")
 
 
 def clean_natural(text: str) -> str:
@@ -38,7 +50,7 @@ def build_templates(df: pl.DataFrame) -> pl.DataFrame:
     )
 
     # Define functions with explicit return types
-    def format_definitions(defs: list[str] | None) -> str:
+    def format_definitions(defs: list[str] | None) -> str:  # type: ignore
         return "\n".join(f"* {i + 1}. {d}" for i, d in enumerate(defs)) + "\n"  # type: ignore
 
     def format_mentions(mentions: list[str]) -> str:
@@ -70,23 +82,56 @@ def build_templates(df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-# Process in chunks if needed
-def process_in_chunks(df: pl.DataFrame, chunk_size: int = 100000) -> pl.DataFrame:
-    chunks = []
-    for i in tqdm(range(0, len(df), chunk_size), desc="Processing chunks"):
+def _write_chunks(df: pl.DataFrame, out_dir: Path, chunk_size: int) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for i in tqdm(range(0, len(df), chunk_size), desc=f"Writing {out_dir}"):
         chunk = df.slice(i, chunk_size)
-        chunks.append(build_templates(chunk))
-    return pl.concat(chunks)
+        path = out_dir / f"sample_{i}.parquet"
+        chunk.write_parquet(path)
 
 
-user_prompt_MM = build_templates(all_concepts_MM)
-user_prompt_quaero = build_templates(all_concepts_quaero)
+@app.command()
+def run(
+    mm_path: Path = typer.Option(None, help="Path to MM concepts parquet"),
+    mm_def: Path = typer.Option(None, help="Path to MM definitions parquet"),
+    quaero_path: Path = typer.Option(None, help="Path to QUAERO concepts parquet"),
+    quaero_def: Path = typer.Option(None, help="Path to QUAERO definitions parquet"),
+    out_mm: Path = typer.Option(
+        Path("data/user_prompts_MM"), help="Output dir for MM prompts"
+    ),
+    out_quaero: Path = typer.Option(
+        Path("data/user_prompts_quaero"), help="Output dir for QUAERO prompts"
+    ),
+    shuffle: bool = typer.Option(True, help="Shuffle concepts (sample fraction=1)"),
+    chunk_size: int = typer.Option(2500, help="Chunk size for output parquet files"),
+) -> None:
+    """Generate user prompts for one or both datasets depending on provided paths."""
+    if not any([mm_path and mm_def, quaero_path and quaero_def]):
+        raise typer.BadParameter(
+            "Provide at least one dataset (MM or QUAERO) with its definition file."
+        )
+
+    if mm_path and mm_def:
+        mm_joined = _load_join(mm_path, mm_def)
+        # If only definitions file is desired (original logic sampled from defs directly)
+        if "DEF" in mm_joined.columns:
+            mm_filtered = mm_joined.filter(pl.col("DEF").is_not_null())
+            if shuffle:
+                mm_filtered = mm_filtered.sample(fraction=1)
+            user_prompt_mm = build_templates(mm_filtered)
+            _write_chunks(user_prompt_mm, out_mm, chunk_size)
+            typer.echo(f"MM concepts written to {out_mm}")
+
+    if quaero_path and quaero_def:
+        q_joined = _load_join(quaero_path, quaero_def)
+        if "DEF" in q_joined.columns:
+            q_filtered = q_joined.filter(pl.col("DEF").is_not_null())
+            if shuffle:
+                q_filtered = q_filtered.sample(fraction=1)
+            user_prompt_q = build_templates(q_filtered)
+            _write_chunks(user_prompt_q, out_quaero, chunk_size)
+            typer.echo(f"QUAERO concepts written to {out_quaero}")
 
 
-chunk_size = 2500
-for i in tqdm(range(0, len(user_prompt_MM), chunk_size), desc="Processing chunks"):
-    chunk = user_prompt_MM.slice(i, chunk_size)
-    chunk.write_parquet("data/user_prompts_MM/sample_{i}.parquet")
-for i in tqdm(range(0, len(user_prompt_quaero), chunk_size), desc="Processing chunks"):
-    chunk = user_prompt_quaero.slice(i, chunk_size)
-    chunk.write_parquet("data/user_prompts_quaero/sample_{i}.parquet")
+if __name__ == "__main__":
+    app()

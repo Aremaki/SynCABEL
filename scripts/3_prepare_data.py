@@ -1,268 +1,231 @@
+"""Prepare model-specific source/target datasets from BigBio corpora (Typer CLI).
+
+For each selected dataset (MedMentions, EMEA, MEDLINE) and model name, creates
+pickle files with token-inserted source/target sequences. Optionally includes
+synthetic training data (SynthMM / SynthQUAERO JSON) if available.
+"""
+
 import json
 import pickle
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Optional
 
 import polars as pl
+import typer
 from datasets import load_dataset
 
 from syncabel.parse_data import process_bigbio_dataset
 
-# Load Synthetic data
-with open("data/bigbio_datasets/SynthMM.json", "rb") as json_file:
-    synthMM = json.load(json_file)
-with open("data/bigbio_datasets/SynthQUAERO.json", "rb") as json_file:
-    synthQUAERO = json.load(json_file)
-
-# Load human-annotated data
-MM_data = load_dataset("bigbio/medmentions", name="medmentions_st21pv_bigbio_kb")
-MEDLINE_data = load_dataset("bigbio/quaero", name="quaero_medline_bigbio_kb")
-EMEA_data = load_dataset("bigbio/quaero", name="quaero_emea_bigbio_kb")
-
-
-# Load UMLS data
-umls_MM_2017 = pl.read_parquet("data/MM_2017_all.parquet")
-umls_quaero_2014 = pl.read_parquet("data/QUAERO_2014_all.parquet")
-
-# Create synonym to annotation mappings
-Syn_to_annotation_MM = umls_MM_2017.with_columns(
-    Syn=pl.col("Entity").str.split(" of type ").list.get(0)
-)
-CUI_to_Syn_MM = dict(
-    Syn_to_annotation_MM.group_by("CUI").agg([pl.col("Entity").unique()]).iter_rows()
-)
-Syn_to_annotation_quaero = umls_quaero_2014.with_columns(
-    Syn=pl.col("Entity").str.split(" of type ").list.get(0)
-)
-CUI_to_Syn_quaero = dict(
-    Syn_to_annotation_quaero.group_by("CUI")
-    .agg([pl.col("Entity").unique()])
-    .iter_rows()
+app = typer.Typer(
+    help="Preprocess BigBio datasets into model-specific train/dev/test pickles."
 )
 
-# Process MedMentions dataset
-dataset_name = "MedMentions"
-start_entity = "["
-end_entity = "]"
-start_tag = "{"
-end_tag = "}"
-model_names = [
+DEFAULT_MODELS = [
     "mt5-large",
     "bart-large",
     "biobart-v2-large",
     "bart-genre",
     "mbart-large-50",
 ]
-for model_name in model_names:
-    synth_train_source, synth_train_target = process_bigbio_dataset(
-        synthMM,
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_MM,
-        Syn_to_annotation=Syn_to_annotation_MM,
-        model_name=model_name,
-    )
-    train_source, train_target = process_bigbio_dataset(
-        MM_data["train"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_MM,
-        Syn_to_annotation=Syn_to_annotation_MM,
-        model_name=model_name,
-    )
-    dev_source, dev_target = process_bigbio_dataset(
-        MM_data["validation"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_MM,
-        Syn_to_annotation=Syn_to_annotation_MM,
-        model_name=model_name,
-    )
-    test_source, test_target = process_bigbio_dataset(
-        MM_data["test"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_MM,
-        model_name=model_name,
-    )
-
-    data_folder = f"data/preprocessed_dataset/{dataset_name}"
-    with open(data_folder + f"/synth_train_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(synth_train_source, file, protocol=-1)
-    with open(data_folder + f"/synth_train_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(synth_train_target, file, protocol=-1)
-    with open(data_folder + f"/train_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(train_source, file, protocol=-1)
-    with open(data_folder + f"/train_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(train_target, file, protocol=-1)
-    with open(data_folder + f"/dev_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(dev_source, file, protocol=-1)
-    with open(data_folder + f"/dev_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(dev_target, file, protocol=-1)
-    with open(data_folder + f"/test_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(test_source, file, protocol=-1)
-    with open(data_folder + f"/test_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(test_target, file, protocol=-1)
 
 
-# Process EMEA dataset
-dataset_name = "EMEA"
-start_entity = "["
-end_entity = "]"
-start_tag = "{"
-end_tag = "}"
-model_names = [
-    "mt5-large",
-    "bart-large",
-    "biobart-v2-large",
-    "bart-genre",
-    "mbart-large-50",
-]
-for model_name in model_names:
-    synth_train_source, synth_train_target = process_bigbio_dataset(
-        synthQUAERO,
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_quaero,
-        Syn_to_annotation=Syn_to_annotation_quaero,
-        model_name=model_name,
-    )
-    train_source, train_target = process_bigbio_dataset(
-        EMEA_data["train"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_quaero,
-        Syn_to_annotation=Syn_to_annotation_quaero,
-        model_name=model_name,
-    )
-    dev_source, dev_target = process_bigbio_dataset(
-        EMEA_data["validation"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_quaero,
-        Syn_to_annotation=Syn_to_annotation_quaero,
-        model_name=model_name,
-    )
-    test_source, test_target = process_bigbio_dataset(
-        EMEA_data["test"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_quaero,
-        model_name=model_name,
-    )
+def _load_json_if_exists(path: Path):
+    if path and path.exists():
+        with path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
 
-    data_folder = f"data/preprocessed_dataset/{dataset_name}"
-    with open(data_folder + f"/synth_train_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(synth_train_source, file, protocol=-1)
-    with open(data_folder + f"/synth_train_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(synth_train_target, file, protocol=-1)
-    with open(data_folder + f"/train_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(train_source, file, protocol=-1)
-    with open(data_folder + f"/train_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(train_target, file, protocol=-1)
-    with open(data_folder + f"/dev_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(dev_source, file, protocol=-1)
-    with open(data_folder + f"/dev_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(dev_target, file, protocol=-1)
-    with open(data_folder + f"/test_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(test_source, file, protocol=-1)
-    with open(data_folder + f"/test_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(test_target, file, protocol=-1)
 
-# Process MEDLINE dataset
-dataset_name = "MEDLINE"
-start_entity = "["
-end_entity = "]"
-start_tag = "{"
-end_tag = "}"
-model_names = [
-    "mt5-large",
-    "bart-large",
-    "biobart-v2-large",
-    "bart-genre",
-    "mbart-large-50",
-]
-for model_name in model_names:
-    synth_train_source, synth_train_target = process_bigbio_dataset(
-        synthQUAERO,
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_quaero,
-        Syn_to_annotation=Syn_to_annotation_quaero,
-        model_name=model_name,
+def _build_mappings(umls_parquet: Path):
+    df = pl.read_parquet(umls_parquet)
+    syn_df = df.with_columns(Syn=pl.col("Entity").str.split(" of type ").list.get(0))
+    cui_to_syn = dict(
+        syn_df.group_by("CUI").agg([pl.col("Entity").unique()]).iter_rows()
     )
-    train_source, train_target = process_bigbio_dataset(
-        MEDLINE_data["train"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_quaero,
-        Syn_to_annotation=Syn_to_annotation_quaero,
-        model_name=model_name,
-    )
-    dev_source, dev_target = process_bigbio_dataset(
-        MEDLINE_data["validation"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_quaero,
-        Syn_to_annotation=Syn_to_annotation_quaero,
-        model_name=model_name,
-    )
-    test_source, test_target = process_bigbio_dataset(
-        MEDLINE_data["test"],
-        start_entity,
-        end_entity,
-        start_tag,
-        end_tag,
-        natural=True,
-        CUI_to_Syn=CUI_to_Syn_quaero,
-        model_name=model_name,
-    )
+    return syn_df, cui_to_syn
 
-    data_folder = f"data/preprocessed_dataset/{dataset_name}"
-    with open(data_folder + f"/synth_train_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(synth_train_source, file, protocol=-1)
-    with open(data_folder + f"/synth_train_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(synth_train_target, file, protocol=-1)
-    with open(data_folder + f"/train_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(train_source, file, protocol=-1)
-    with open(data_folder + f"/train_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(train_target, file, protocol=-1)
-    with open(data_folder + f"/dev_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(dev_source, file, protocol=-1)
-    with open(data_folder + f"/dev_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(dev_target, file, protocol=-1)
-    with open(data_folder + f"/test_source_{model_name}.pkl", "wb") as file:
-        pickle.dump(test_source, file, protocol=-1)
-    with open(data_folder + f"/test_target_{model_name}.pkl", "wb") as file:
-        pickle.dump(test_target, file, protocol=-1)
+
+def _ensure_dir(path: Path):
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _dump(obj, path: Path):
+    with path.open("wb") as f:
+        pickle.dump(obj, f, protocol=-1)
+
+
+def _iter_selected(options: Optional[Iterable[str]], all_list: list[str]) -> list[str]:
+    if not options:
+        return all_list
+    return [m for m in options if m in all_list]
+
+
+def _process_single_dataset(
+    name: str,
+    hf_id: str,
+    hf_config: str,
+    synth_data,
+    syn_df,
+    cui_to_syn,
+    model_names: list[str],
+    start_entity: str,
+    end_entity: str,
+    start_tag: str,
+    end_tag: str,
+    out_root: Path,
+):
+    typer.echo(f"→ Loading dataset {hf_id}:{hf_config} ...")
+    ds = load_dataset(hf_id, name=hf_config)
+    data_folder = out_root / name
+    _ensure_dir(data_folder)
+
+    for model_name in model_names:
+        typer.echo(f"  • Processing model {model_name}")
+        if synth_data is not None:
+            synth_src, synth_tgt = process_bigbio_dataset(
+                synth_data,
+                start_entity,
+                end_entity,
+                start_tag,
+                end_tag,
+                natural=True,
+                CUI_to_Syn=cui_to_syn,
+                Syn_to_annotation=syn_df,
+                model_name=model_name,
+            )
+        else:
+            synth_src, synth_tgt = [], []
+
+        # Build splits dict only for existing keys to avoid static type checker complaints
+        splits = {"train": ds["train"]}
+        if "validation" in ds:
+            splits["validation"] = ds["validation"]
+        if "test" in ds:
+            splits["test"] = ds["test"]
+        processed = {}
+        for split_name, split_data in splits.items():
+            if not split_data:
+                continue
+            src, tgt = process_bigbio_dataset(
+                split_data,
+                start_entity,
+                end_entity,
+                start_tag,
+                end_tag,
+                natural=True,
+                CUI_to_Syn=cui_to_syn,
+                Syn_to_annotation=syn_df,
+                model_name=model_name,
+            )
+            processed[split_name] = (src, tgt)
+
+        # Write outputs
+        if synth_src:
+            _dump(synth_src, data_folder / f"synth_train_source_{model_name}.pkl")
+            _dump(synth_tgt, data_folder / f"synth_train_target_{model_name}.pkl")
+        for split_name, (src, tgt) in processed.items():
+            _dump(src, data_folder / f"{split_name}_source_{model_name}.pkl")
+            _dump(tgt, data_folder / f"{split_name}_target_{model_name}.pkl")
+
+
+@app.command()
+def run(
+    datasets: list[str] = typer.Option(
+        ["MedMentions", "EMEA", "MEDLINE"],
+        help="Datasets to process (subset of MedMentions, EMEA, MEDLINE)",
+    ),
+    models: list[str] = typer.Option(
+        None, help="Subset of model names; defaults to all supported if omitted"
+    ),
+    start_entity: str = typer.Option("[", help="Start entity marker"),
+    end_entity: str = typer.Option("]", help="End entity marker"),
+    start_tag: str = typer.Option("{", help="Start tag marker"),
+    end_tag: str = typer.Option("}", help="End tag marker"),
+    synth_mm_path: Path = typer.Option(
+        Path("data/bigbio_datasets/SynthMM.json"), help="Synthetic MM JSON"
+    ),
+    synth_quaero_path: Path = typer.Option(
+        Path("data/bigbio_datasets/SynthQUAERO.json"), help="Synthetic QUAERO JSON"
+    ),
+    umls_mm_parquet: Path = typer.Option(
+        Path("data/MM_2017_all.parquet"), help="UMLS MM parquet"
+    ),
+    umls_quaero_parquet: Path = typer.Option(
+        Path("data/QUAERO_2014_all.parquet"), help="UMLS QUAERO parquet"
+    ),
+    out_root: Path = typer.Option(
+        Path("data/preprocessed_dataset"), help="Root output directory"
+    ),
+) -> None:
+    """Run preprocessing pipeline for selected datasets and models."""
+    model_list = _iter_selected(models, DEFAULT_MODELS)
+    typer.echo(f"Models: {model_list}")
+
+    # Load UMLS mapping resources
+    syn_mm_df, cui_to_syn_mm = _build_mappings(umls_mm_parquet)
+    syn_quaero_df, cui_to_syn_quaero = _build_mappings(umls_quaero_parquet)
+
+    # Synthetic data (optional)
+    synth_mm = _load_json_if_exists(synth_mm_path)
+    synth_quaero = _load_json_if_exists(synth_quaero_path)
+    if synth_mm is None:
+        typer.echo(
+            "⚠️ SynthMM not found; skipping synthetic augmentation for MedMentions."
+        )
+    if synth_quaero is None:
+        typer.echo(
+            "⚠️ SynthQUAERO not found; skipping synthetic augmentation for QUAERO-based datasets."
+        )
+
+    # Dispatch per dataset
+    if "MedMentions" in datasets:
+        _process_single_dataset(
+            "MedMentions",
+            "bigbio/medmentions",
+            "medmentions_st21pv_bigbio_kb",
+            synth_mm,
+            syn_mm_df,
+            cui_to_syn_mm,
+            model_list,
+            start_entity,
+            end_entity,
+            start_tag,
+            end_tag,
+            out_root,
+        )
+    if "EMEA" in datasets:
+        _process_single_dataset(
+            "EMEA",
+            "bigbio/quaero",
+            "quaero_emea_bigbio_kb",
+            synth_quaero,
+            syn_quaero_df,
+            cui_to_syn_quaero,
+            model_list,
+            start_entity,
+            end_entity,
+            start_tag,
+            end_tag,
+            out_root,
+        )
+    if "MEDLINE" in datasets:
+        _process_single_dataset(
+            "MEDLINE",
+            "bigbio/quaero",
+            "quaero_medline_bigbio_kb",
+            synth_quaero,
+            syn_quaero_df,
+            cui_to_syn_quaero,
+            model_list,
+            start_entity,
+            end_entity,
+            start_tag,
+            end_tag,
+            out_root,
+        )
+    typer.echo("✅ Preprocessing complete.")
+
+
+if __name__ == "__main__":  # pragma: no cover
+    app()

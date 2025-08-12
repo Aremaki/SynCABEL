@@ -1,0 +1,51 @@
+Your job is to generate synthetic examples for entity linking, mimicking the language style found in PubMed abstracts.
+
+# Input Format
+- **CUI**:
+A unique concept ID
+- **Definitions**:
+One or more definitions of the concept
+- **Mentions**:
+A list of mentions (may include technical or unnatural terms)
+
+# Tasks
+Perform these tasks:
+1. **Mention Selection & Generation:**
+   - First evaluate which existing mentions sound most natural in professional biomedical writing (clinical or research contexts)
+   - Keep only the most fluent mentions from the existing list
+   - Then generate additional high-quality mentions that:
+     * Add natural variations researchers would use
+     * Cover different naming conventions (acronyms, full names, functional names)
+     * Complement the existing mentions
+   - The total should be 5 mentions (mix of kept existing and newly generated)
+   - **Avoid**:
+       - Commas (`,`), parentheses.
+       - ALL_CAPS or underscored terms (e.g., `ALPHA_TOCOPHEROL`).
+       - Chemical names.
+       - Non-English terms or foreign language mentions.
+2. **Contextual Usage Examples:**
+   For each of the final 5 mentions:
+   - Write one clear sentence (15-30 words) with the mention in brackets in the style of a biomedical abstract.
+   - Each must:
+       - Include the concept in `[brackets]`.
+       - Start with `example: `.
+       - Be **distinct in context** (e.g., different study types, organisms, biological systems, or outcomes)
+       - Mimic the tone and vocabulary typical of **PubMed biomedical research** papers
+
+# PubMed Abstract Style Examples
+- Red ripe fruits were morphologically characterized and biochemically analyzed for their content in glycoalkaloids, phenols, amino acids, and Amadori products.
+- "MeHg bioaccumulated and induced significant increase of the photosynthesis efficiency, while the algal growth, oxidative stress, and chlorophyll fluorescence were unaffected.
+- "Students from a midsize private university (n = 159) completed a 15-minute anonymous questionnaire, including questions on risk behaviors, sleep habits, alcohol, and caffeine consumption.
+
+# Output Format
+## Final Mention Set
+1. Mention 1
+2. Mention 2
+...
+5. Mention 5
+
+## Usage Examples
+example: "Sentence with [mention 1] in context..."
+example: "Sentence with [mention 2] in context..."
+...
+example: "Sentence with [mention 5] in context..."
