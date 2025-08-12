@@ -129,10 +129,8 @@ dmypy.json
 .pyre/
 
 # SynCABEL specific
-data/raw/
-data/processed/
-outputs/
-wandb/
+*.zip
+*.parquet
 *.pt
 *.pth
 *.ckpt

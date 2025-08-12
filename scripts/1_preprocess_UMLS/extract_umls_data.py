@@ -163,7 +163,8 @@ def _ensure_out_dir(out_dir: Path) -> None:
 
 def _iter_rrf(zip_path: Path, inner_path: str) -> Iterable[list[str]]:
     with zipfile.ZipFile(zip_path) as zf:
-        with zf.open(inner_path, mode="r") as fh:
+        folder_name = zip_path.parts[-1].split(".")[0]
+        with zf.open(folder_name + "/" + inner_path, mode="r") as fh:
             for raw in fh:  # streaming, not loading entire file
                 parts = str(raw)[2:-3].split("|")  # preserve original parsing behavior
                 yield parts
@@ -182,7 +183,7 @@ def codes(
     """Extract unique CUIs to umls_codes.parquet."""
     _ensure_out_dir(out_dir)
     cuis: list[str] = []
-    for parts in tqdm(_iter_rrf(umls_zip, "UMLS/MRCONSO.RRF"), desc="CUIs"):
+    for parts in tqdm(_iter_rrf(umls_zip, "MRCONSO.RRF"), desc="CUIs"):
         if parts and parts[0]:
             cuis.append(parts[0])
     pl.DataFrame({"CUI": cuis}).unique().write_parquet(out_dir / "umls_codes.parquet")
@@ -202,15 +203,17 @@ def semantic(
     """Extract semantic types and enrich with coarse category mapping."""
     _ensure_out_dir(out_dir)
     rows = {"CUI": [], "SEM_CODE": [], "TREE_CODE": [], "SEM_NAME": []}
-    for parts in tqdm(_iter_rrf(umls_zip, "UMLS/MRSTY.RRF"), desc="Semantic"):
+    for parts in tqdm(_iter_rrf(umls_zip, "MRSTY.RRF"), desc="Semantic"):
         if len(parts) >= 4:
             rows["CUI"].append(parts[0])
             rows["SEM_CODE"].append(parts[1])
             rows["TREE_CODE"].append(parts[2])
             rows["SEM_NAME"].append(parts[3])
-    df = pl.DataFrame(rows).unique()
+    df = pl.DataFrame(rows, orient="row").unique()
     df_sem_info = pl.DataFrame(
-        SEMANTIC_INFO, schema=["CATEGORY", "GROUP", "SEM_CODE", "SEM_NAME"]
+        SEMANTIC_INFO,
+        schema=["CATEGORY", "GROUP", "SEM_CODE", "SEM_NAME"],
+        orient="row",
     )
     df = df.join(df_sem_info, on=["SEM_CODE", "SEM_NAME"], how="left")
     out_file = out_dir / "umls_semantic.parquet"
@@ -228,7 +231,7 @@ def definitions(
     """Extract definitions grouped per CUI to umls_def.parquet."""
     _ensure_out_dir(out_dir)
     rows = {"CUI": [], "DEF": []}
-    for parts in tqdm(_iter_rrf(umls_zip, "UMLS/MRDEF.RRF"), desc="Definitions"):
+    for parts in tqdm(_iter_rrf(umls_zip, "MRDEF.RRF"), desc="Definitions"):
         if len(parts) > 5:
             rows["CUI"].append(parts[0])
             rows["DEF"].append(parts[5])
@@ -262,7 +265,7 @@ def synonyms(
     en_title = {"CUI": [], "UMLS_Title_en": []}
     fr_syn = {"CUI": [], "UMLS_alias_fr": []}
     en_syn = {"CUI": [], "UMLS_alias_en": []}
-    for parts in tqdm(_iter_rrf(umls_zip, "UMLS/MRCONSO.RRF"), desc="Synonyms"):
+    for parts in tqdm(_iter_rrf(umls_zip, "MRCONSO.RRF"), desc="Synonyms"):
         if len(parts) < 15:
             continue
         cui = parts[0]
