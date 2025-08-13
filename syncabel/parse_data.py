@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 import nltk
 import nltk.data
@@ -226,14 +227,40 @@ def process_bigbio_dataset(
     natural=False,
     model_name=None,
     corrected_cui=None,
+    language: str = "english",
 ):
-    # Load sentenczier
-    nlp = nltk.data.load("tokenizers/punkt/english.pickle")
+    """Process a BigBio KB dataset into source/target sequences.
 
-    # Load tokenizer
-    root_path = "/models"
-    model_path = root_path + "/" + model_name  # type: ignore
-    tokenizer = AutoTokenizer.from_pretrained(model_path, add_prefix_space=False)
+    Parameters
+    ----------
+    language: str
+        Punkt language model to use (e.g. 'english', 'french').
+    """
+    # Load sentence tokenizer for requested language (default english).
+    # Falls back to english if the specified model is unavailable.
+    try:
+        nlp = nltk.data.load(f"tokenizers/punkt/{language}.pickle")
+    except LookupError:
+        print(f"⚠️ Punkt model for '{language}' not found; falling back to English.")
+        nlp = nltk.data.load("tokenizers/punkt/english.pickle")
+    # Load tokenizer: prefer HuggingFace hub (model_name as repo id). If that fails,
+    # fall back to a local directory models/<model_name> if it exists. This removes
+    # the previous hard dependency on a /models mount.
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, add_prefix_space=False)
+    except Exception as hub_err:  # pragma: no cover - network / availability branch
+        local_dir = Path("models") / str(model_name)
+        if local_dir.exists():
+            print(
+                f"⚠️ Hub load failed for '{model_name}' ({hub_err}); falling back to local path {local_dir}."
+            )
+            tokenizer = AutoTokenizer.from_pretrained(
+                str(local_dir), add_prefix_space=False
+            )
+        else:
+            raise RuntimeError(
+                f"Failed to load tokenizer for '{model_name}' from hub and no local fallback at {local_dir}."
+            ) from hub_err
     tokenizer.add_special_tokens(
         {"additional_special_tokens": [start_entity, end_entity, start_tag, end_tag]},
         replace_additional_special_tokens=False,

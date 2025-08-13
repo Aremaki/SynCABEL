@@ -50,7 +50,7 @@ def build_templates(df: pl.DataFrame) -> pl.DataFrame:
     )
 
     # Define functions with explicit return types
-    def format_definitions(defs: list[str] | None) -> str:  # type: ignore
+    def format_definitions(defs: list[str]) -> str:  # type: ignore
         return "\n".join(f"* {i + 1}. {d}" for i, d in enumerate(defs)) + "\n"  # type: ignore
 
     def format_mentions(mentions: list[str]) -> str:

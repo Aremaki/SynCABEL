@@ -1,6 +1,5 @@
 """Generate synthetic biomedical context sentences for concepts."""
 
-import json
 import re
 import time
 from pathlib import Path
@@ -15,59 +14,13 @@ from transformers import (
     BitsAndBytesConfig,  # type: ignore
 )
 
+from .convert_to_bigbio import write_bigbio_json  # type: ignore
+
 app = typer.Typer(help="Generate synthetic sentences for MM prompts.")
 
 
 def load_system_prompt(path: Path) -> str:
     return path.read_text(encoding="utf-8")
-
-
-def process_sentence(sentence, document_id, sentence_num, cui):
-    # Initialize the output dictionary for this sentence
-    output = {
-        "id": str(document_id),
-        "document_id": f"{document_id}_{sentence_num}",
-        "passages": [
-            {
-                "id": f"{document_id}_{sentence_num}__text",
-                "type": "abstract",
-                "text": [sentence + "\n"],
-                "offsets": [[0, len(sentence)]],
-            }
-        ],
-        "entities": [],
-        "events": [],
-        "coreferences": [],
-        "relations": [],
-    }
-
-    # Find all entities in square brackets
-    entities = re.findall(r"\[(.*?)\]", sentence)
-
-    # For each entity, find all occurrences in the sentence
-    for entity in set(entities):  # Using set() to avoid duplicates
-        # Escape special regex characters in the entity
-        escaped_entity = re.escape(entity)
-        # Find all matches of this entity in the sentence
-        matches = re.finditer(escaped_entity, sentence)
-
-        for match_num, match in enumerate(matches, 1):
-            entity_id = f"{document_id}_{sentence_num}_T{match_num}"
-            entity_data = {
-                "id": entity_id,
-                "type": "LLM_generated",
-                "text": [entity],
-                "offsets": [[match.start(), match.end()]],
-                "normalized": [
-                    {
-                        "db_name": "UMLS",
-                        "db_id": cui,  # Using the provided CUI
-                    }
-                ],
-            }
-            output["entities"].append(entity_data)
-
-    return output
 
 
 def load_model_and_tokenizer(model_path):
@@ -264,19 +217,11 @@ def run(
     result_df.write_parquet(result_path)
     typer.echo(f"✅ Parquet written: {result_path}")
 
-    # Build BigBio style JSON
-    filtered = result_df.filter(~pl.col("llm_output").str.contains("FAIL"))
-    bigbio_llm_all = []
-    for i in tqdm(range(len(filtered))):
-        cui = filtered["CUI"][i]
-        sentences = filtered["llm_output"][i].split("\n")
-        for j, sentence in enumerate(sentences):
-            bigbio_llm_all.append(process_sentence(sentence, i, j, cui))
-
-    bigbio_out.parent.mkdir(parents=True, exist_ok=True)
-    with bigbio_out.open("w", encoding="utf-8") as f:
-        json.dump(bigbio_llm_all, f, ensure_ascii=False, indent=4)
-    typer.echo(f"✅ BigBio JSON written: {bigbio_out}\nChunk {chunk} complete.")
+    # Convert to BigBio via shared helper
+    n = write_bigbio_json(result_df, bigbio_out)
+    typer.echo(
+        f"✅ BigBio JSON written: {bigbio_out} ({n} records)\nChunk {chunk} complete."
+    )
 
 
 if __name__ == "__main__":

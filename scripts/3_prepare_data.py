@@ -22,11 +22,11 @@ app = typer.Typer(
 )
 
 DEFAULT_MODELS = [
-    "mt5-large",
-    "bart-large",
-    "biobart-v2-large",
-    "bart-genre",
-    "mbart-large-50",
+    "google/mt5-large",
+    "facebook/bart-large",
+    "GanjinZero/biobart-v2-large",
+    "facebook/genre-linking-blink",
+    "facebook/mbart-large-50",
 ]
 
 
@@ -80,6 +80,9 @@ def _process_single_dataset(
     data_folder = out_root / name
     _ensure_dir(data_folder)
 
+    # Determine sentence tokenizer language: MedMentions (English), else French for QUAERO variants.
+    language = "english" if name == "MedMentions" else "french"
+
     for model_name in model_names:
         typer.echo(f"  • Processing model {model_name}")
         if synth_data is not None:
@@ -93,6 +96,7 @@ def _process_single_dataset(
                 CUI_to_Syn=cui_to_syn,
                 Syn_to_annotation=syn_df,
                 model_name=model_name,
+                language=language,
             )
         else:
             synth_src, synth_tgt = [], []
@@ -117,6 +121,7 @@ def _process_single_dataset(
                 CUI_to_Syn=cui_to_syn,
                 Syn_to_annotation=syn_df,
                 model_name=model_name,
+                language=language,
             )
             processed[split_name] = (src, tgt)
 
@@ -143,19 +148,22 @@ def run(
     start_tag: str = typer.Option("{", help="Start tag marker"),
     end_tag: str = typer.Option("}", help="End tag marker"),
     synth_mm_path: Path = typer.Option(
-        Path("data/bigbio_datasets/SynthMM.json"), help="Synthetic MM JSON"
+        Path("data/synthetic_data/SynthMM/SynthMM_bigbio.json"),
+        help="Synthetic MM JSON",
     ),
     synth_quaero_path: Path = typer.Option(
-        Path("data/bigbio_datasets/SynthQUAERO.json"), help="Synthetic QUAERO JSON"
+        Path("data/synthetic_data/SynthQUAERO/SynthQUAERO_bigbio.json"),
+        help="Synthetic QUAERO JSON",
     ),
     umls_mm_parquet: Path = typer.Option(
-        Path("data/MM_2017_all.parquet"), help="UMLS MM parquet"
+        Path("data/UMLS_processed/MM/all_disambiguated.parquet"), help="UMLS MM parquet"
     ),
     umls_quaero_parquet: Path = typer.Option(
-        Path("data/QUAERO_2014_all.parquet"), help="UMLS QUAERO parquet"
+        Path("data/UMLS_processed/QUAERO/all_disambiguated.parquet"),
+        help="UMLS QUAERO parquet",
     ),
     out_root: Path = typer.Option(
-        Path("data/preprocessed_dataset"), help="Root output directory"
+        Path("data/final_data"), help="Root output directory"
     ),
 ) -> None:
     """Run preprocessing pipeline for selected datasets and models."""

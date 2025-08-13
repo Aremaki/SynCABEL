@@ -130,6 +130,7 @@ dmypy.json
 
 # SynCABEL specific
 *.zip
+*.json
 *.parquet
 *.pt
 *.pth
